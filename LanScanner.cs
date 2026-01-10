@@ -1,43 +1,17 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using Newtonsoft.Json;
 using StardewModdingAPI;
 
-namespace LANScanner
+namespace FarmLink
 {
-    /// <summary>
-    /// Represents a discovered LAN server.
-    /// </summary>
-    public class LanServerData
-    {
-        public string Address { get; set; } = "";
-        public string Protocol { get; set; } = "";
-        public string FarmName { get; set; } = "";
-        public string HostName { get; set; } = "";
-        public string PlayerCount { get; set; } = "";
-        public string GameVersion { get; set; } = "";
-        public int Port { get; set; }
-        public string FarmTypeId { get; set; } = "Standard";
-        public DateTime LastSeen { get; set; }
-
-        /// <summary>
-        /// Unique key for deduplication: FarmName + HostName
-        /// (Multiple NICs may report same server from different IPs)
-        /// </summary>
-        public string UniqueKey => $"{FarmName}|{HostName}";
-    }
-
     /// <summary>
     /// Non-blocking UDP listener for LAN server discovery.
     /// Runs on a background thread and raises events when servers are found.
     /// </summary>
-    public class LanScanner : IDisposable
+    public class FarmLink : IDisposable
     {
         #region Constants
 
@@ -53,8 +27,7 @@ namespace LANScanner
         private Thread? _listenerThread;
         private Thread? _cleanupThread;
         private bool _isRunning;
-        private int _listenPort;
-
+        
         /// <summary>
         /// Thread-safe dictionary of discovered servers.
         /// Key: UniqueKey (FarmName|HostName) to handle multi-NIC scenarios.
@@ -84,10 +57,20 @@ namespace LANScanner
 
         #region Lifecycle
 
-        public LanScanner(IMonitor monitor)
+        public FarmLink(IMonitor monitor)
         {
             _monitor = monitor;
         }
+
+        public void Dispose()
+        {
+            Stop();
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+
+        #region Public API
 
         /// <summary>
         /// Start listening for LAN broadcasts on the specified port.
@@ -96,11 +79,9 @@ namespace LANScanner
         {
             if (_isRunning)
             {
-                _monitor.Log("LAN Scanner already running.", LogLevel.Trace);
+                _monitor.Log("LAN Scanner already running.");
                 return;
             }
-
-            _listenPort = port;
 
             try
             {
@@ -134,7 +115,7 @@ namespace LANScanner
                 _listenerThread = new Thread(ListenerLoop)
                 {
                     IsBackground = true,
-                    Name = "LANScanner-Listener"
+                    Name = "FarmLink-Listener"
                 };
                 _listenerThread.Start();
 
@@ -142,7 +123,7 @@ namespace LANScanner
                 _cleanupThread = new Thread(CleanupLoop)
                 {
                     IsBackground = true,
-                    Name = "LANScanner-Cleanup"
+                    Name = "FarmLink-Cleanup"
                 };
                 _cleanupThread.Start();
 
@@ -181,174 +162,6 @@ namespace LANScanner
             _monitor.Log("LAN Scanner stopped.", LogLevel.Info);
         }
 
-        public void Dispose()
-        {
-            Stop();
-            GC.SuppressFinalize(this);
-        }
-
-        #endregion
-
-        #region Listener Loop
-
-        private void ListenerLoop()
-        {
-            _monitor.Log("Listener thread started.", LogLevel.Trace);
-
-            while (_isRunning && _listener != null)
-            {
-                try
-                {
-                    // Non-blocking receive with timeout
-                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                    byte[] data = _listener.Receive(ref remoteEP);
-
-                    if (remoteEP != null && data != null && data.Length > 0)
-                    {
-                        _monitor.Log($"Received {data.Length} bytes from {remoteEP.Address}", LogLevel.Trace);
-                        ProcessPacket(data, remoteEP.Address.ToString());
-                    }
-                }
-                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
-                {
-                    // Expected timeout, continue loop
-                    // Don't log this - it's normal behavior
-                    continue;
-                }
-                catch (SocketException ex) when (!_isRunning)
-                {
-                    // Socket closed during shutdown, exit gracefully
-                    _monitor.Log("Socket closed during shutdown.", LogLevel.Trace);
-                    break;
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Listener was disposed, exit gracefully
-                    _monitor.Log("Listener disposed.", LogLevel.Trace);
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _monitor.Log($"Listener error: {ex.GetType().Name} - {ex.Message}", LogLevel.Warn);
-                    // Continue running unless it's a critical failure
-                    if (ex is SocketException se && se.SocketErrorCode == SocketError.NetworkDown)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            _monitor.Log("Listener thread stopped.", LogLevel.Trace);
-        }
-
-        #endregion
-
-        #region Packet Processing
-
-        private void ProcessPacket(byte[] data, string senderAddress)
-        {
-            try
-            {
-                string json = Encoding.UTF8.GetString(data);
-                var payload = JsonConvert.DeserializeObject<dynamic>(json);
-
-                // Validate protocol
-                if (payload?.Protocol != "StardewLAN")
-                {
-                    return;
-                }
-
-                // Extract server data
-                var server = new LanServerData
-                {
-                    Address = senderAddress,
-                    Protocol = payload.Protocol,
-                    FarmName = payload.FarmName ?? "Unknown Farm",
-                    HostName = payload.HostName ?? "Unknown Host",
-                    PlayerCount = payload.PlayerCount ?? "?/?",
-                    GameVersion = payload.GameVersion ?? "",
-                    Port = payload.Port ?? 24642,
-                    FarmTypeId = payload.FarmTypeId ?? "Standard",  
-                    LastSeen = DateTime.UtcNow
-                };
-
-                string key = server.UniqueKey;
-
-                // Add or update server
-                if (_discoveredServers.TryGetValue(key, out var existing))
-                {
-                    // Update existing server
-                    existing.Address = server.Address; // May change if multi-NIC
-                    existing.PlayerCount = server.PlayerCount;
-                    existing.LastSeen = server.LastSeen;
-
-                    OnServerUpdated?.Invoke(existing);
-                    _monitor.Log($"Updated server: {server.FarmName} ({server.HostName}) at {server.Address}", LogLevel.Trace);
-                }
-                else
-                {
-                    // New server discovered
-                    _discoveredServers[key] = server;
-                    OnServerDiscovered?.Invoke(server);
-                    _monitor.Log($"Discovered server: {server.FarmName} ({server.HostName}) at {server.Address}:{server.Port}", LogLevel.Info);
-                }
-            }
-            catch (JsonException ex)
-            {
-                _monitor.Log($"Invalid JSON packet: {ex.Message}", LogLevel.Trace);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"Packet processing error: {ex.Message}", LogLevel.Trace);
-            }
-        }
-
-        #endregion
-
-        #region Cleanup Loop
-
-        private void CleanupLoop()
-        {
-            _monitor.Log("Cleanup thread started.", LogLevel.Trace);
-
-            while (_isRunning)
-            {
-                try
-                {
-                    Thread.Sleep(CleanupIntervalMs);
-
-                    var staleThreshold = DateTime.UtcNow.AddSeconds(-StaleServerTimeoutSeconds);
-                    var staleServers = _discoveredServers
-                        .Where(kvp => kvp.Value.LastSeen < staleThreshold)
-                        .ToList();
-
-                    foreach (var kvp in staleServers)
-                    {
-                        if (_discoveredServers.TryRemove(kvp.Key, out var removed))
-                        {
-                            OnServerRemoved?.Invoke(removed);
-                            _monitor.Log($"Removed stale server: {removed.FarmName} ({removed.HostName})", LogLevel.Trace);
-                        }
-                    }
-                }
-                catch (ThreadInterruptedException)
-                {
-                    // Thread interrupted during shutdown
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _monitor.Log($"Cleanup error: {ex.Message}", LogLevel.Trace);
-                }
-            }
-
-            _monitor.Log("Cleanup thread stopped.", LogLevel.Trace);
-        }
-
-        #endregion
-
-        #region Public API
-
         /// <summary>
         /// Get all currently active servers.
         /// </summary>
@@ -366,6 +179,156 @@ namespace LANScanner
         /// Check if the scanner is currently running.
         /// </summary>
         public bool IsRunning => _isRunning;
+
+        #endregion
+
+        #region Helpers
+
+        private void ListenerLoop()
+        {
+            _monitor.Log("Listener thread started.");
+
+            // Removed "&& _listener != null" as it's checked inside or handled by exception
+            while (_isRunning && _listener != null)
+            {
+                try
+                {
+                    // Non-blocking receive with timeout
+                    IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] data = _listener.Receive(ref remoteEP);
+
+                    if (data is { Length: > 0 })
+                    {
+                        _monitor.Log($"Received {data.Length} bytes from {remoteEP.Address}");
+                        ProcessPacket(data, remoteEP.Address.ToString());
+                    }
+                }
+                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
+                {
+                    // Expected timeout, continue loop
+                    // Don't log this - it's normal behavior
+                }
+                catch (SocketException) when (!_isRunning)
+                {
+                    // Socket closed during shutdown, exit gracefully
+                    _monitor.Log("Socket closed during shutdown.");
+                    break;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Listener was disposed, exit gracefully
+                    _monitor.Log("Listener disposed.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"Listener error: {ex.GetType().Name} - {ex.Message}", LogLevel.Warn);
+                    // Continue running unless it's a critical failure
+                    if (ex is SocketException { SocketErrorCode: SocketError.NetworkDown })
+                    {
+                        break;
+                    }
+                }
+            }
+
+            _monitor.Log("Listener thread stopped.");
+        }
+
+        private void ProcessPacket(byte[] data, string senderAddress)
+        {
+            try
+            {
+                string json = Encoding.UTF8.GetString(data);
+                var payload = JsonConvert.DeserializeObject<dynamic>(json);
+
+                // Validate protocol
+                if (payload?.Protocol != LanServerData.ProtocolId)
+                {
+                    return;
+                }
+
+                // Extract server data
+                var server = new LanServerData
+                {
+                    Address = senderAddress,
+                    Protocol = payload.Protocol,
+                    FarmName = payload.FarmName ?? "Unknown Farm",
+                    HostName = payload.HostName ?? "Unknown Host",
+                    PlayerCount = payload.PlayerCount ?? "?/?",
+                    GameVersion = payload.GameVersion ?? "",
+                    Port = payload.Port ?? 24642,
+                    FarmTypeId = payload.FarmTypeId ?? "Standard",
+                    LastSeen = DateTime.UtcNow
+                };
+
+                string key = server.UniqueKey;
+
+                // Add or update server
+                if (_discoveredServers.TryGetValue(key, out var existing))
+                {
+                    // Update existing server
+                    existing.Address = server.Address; // May change if multi-NIC
+                    existing.PlayerCount = server.PlayerCount;
+                    existing.LastSeen = server.LastSeen;
+
+                    OnServerUpdated?.Invoke(existing);
+                    _monitor.Log($"Updated server: {server.FarmName} ({server.HostName}) at {server.Address}");
+                }
+                else
+                {
+                    // New server discovered
+                    _discoveredServers[key] = server;
+                    OnServerDiscovered?.Invoke(server);
+                    _monitor.Log($"Discovered server: {server.FarmName} ({server.HostName}) at {server.Address}:{server.Port}", LogLevel.Info);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _monitor.Log($"Invalid JSON packet: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"Packet processing error: {ex.Message}");
+            }
+        }
+
+        private void CleanupLoop()
+        {
+            _monitor.Log("Cleanup thread started.");
+
+            while (_isRunning)
+            {
+                try
+                {
+                    Thread.Sleep(CleanupIntervalMs);
+
+                    var staleThreshold = DateTime.UtcNow.AddSeconds(-StaleServerTimeoutSeconds);
+                    var staleServers = _discoveredServers
+                        .Where(kvp => kvp.Value.LastSeen < staleThreshold)
+                        .ToList();
+
+                    foreach (var kvp in staleServers)
+                    {
+                        if (_discoveredServers.TryRemove(kvp.Key, out var removed))
+                        {
+                            OnServerRemoved?.Invoke(removed);
+                            _monitor.Log($"Removed stale server: {removed.FarmName} ({removed.HostName})");
+                        }
+                    }
+                }
+                catch (ThreadInterruptedException)
+                {
+                    // Thread interrupted during shutdown
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"Cleanup error: {ex.Message}");
+                }
+            }
+
+            _monitor.Log("Cleanup thread stopped.");
+        }
 
         #endregion
     }

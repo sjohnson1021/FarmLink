@@ -1,7 +1,5 @@
 using StardewModdingAPI;
-using StardewModdingAPI.Utilities;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
+// ReSharper disable CheckNamespace
 
 namespace GenericModConfigMenu;
 
@@ -123,7 +121,7 @@ public interface IGenericModConfigMenuApi
     /// <param name="allowedValues">The values that can be selected, or <c>null</c> to allow any.</param>
     /// <param name="formatAllowedValue">Get the display text to show for a value from <paramref name="allowedValues"/>, or <c>null</c> to show the values as-is.</param>
     /// <param name="fieldId">The unique field ID for use with <see cref="OnFieldChanged"/>, or <c>null</c> to auto-generate a randomized ID.</param>
-    void AddTextOption(IManifest mod, Func<string> getValue, Action<string> setValue, Func<string> name, Func<string> tooltip = null, string[] allowedValues = null, Func<string, string> formatAllowedValue = null, string fieldId = null);
+    void AddTextOption(IManifest mod, Func<string> getValue, Action<string> setValue, Func<string> name, Func<string>? tooltip = null, string[]? allowedValues = null, Func<string, string>? formatAllowedValue = null, string? fieldId = null);
 
     /// <summary>Add a keybind at the current position in the form.</summary>
     /// <param name="mod">The mod's manifest.</param>
@@ -198,7 +196,7 @@ public interface IGenericModConfigMenuApi
     /// <param name="mod">The mod's manifest.</param>
     /// <param name="onChange">The method to call with the option's unique field ID and new value.</param>
     /// <remarks>Options use a randomized ID by default; you'll likely want to specify the <c>fieldId</c> argument when adding options if you use this.</remarks>
-    // void OnFieldChanged(IManifest mod, Action<string, object> onChange);
+    void OnFieldChanged(IManifest mod, Action<string, object> onChange);
 
     /// <summary>Open the config UI for a specific mod.</summary>
     /// <param name="mod">The mod's manifest.</param>
@@ -216,5 +214,5 @@ public interface IGenericModConfigMenuApi
 
     /// <summary>Remove a mod from the config UI and delete all its options and pages.</summary>
     /// <param name="mod">The mod's manifest.</param>
-    // void Unregister(IManifest mod);
+    void Unregister(IManifest mod);
 }

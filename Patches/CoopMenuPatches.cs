@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Reflection;
 using HarmonyLib;
 using StardewModdingAPI;
 using StardewValley.Menus;
-using LANScanner.UI;
+using FarmLink.UI;
 
-namespace LANScanner.Patches
+namespace FarmLink.Patches
 {
     /// <summary>
     /// Harmony patches for integrating LAN server discovery into CoopMenu.
@@ -14,7 +11,7 @@ namespace LANScanner.Patches
     internal class CoopMenuPatches
     {
         #region Fields
-
+        
         private static IMonitor? _monitor;
 
         // Dictionary to track which CoopMenu instances we've already patched
@@ -22,6 +19,12 @@ namespace LANScanner.Patches
 
         // Store slots per menu instance to allow cleanup
         private static readonly Dictionary<object, List<LanServerSlot>> MenuSlots = new();
+
+        // Cached Reflection
+        private static readonly System.Reflection.FieldInfo? _menuSlotsField = AccessTools.Field(typeof(LoadGameMenu), "menuSlots");
+        private static readonly System.Reflection.FieldInfo? _splitScreenField = AccessTools.Field(typeof(CoopMenu), "_splitScreen");
+        private static readonly System.Reflection.MethodInfo? _updateButtonsMethod = AccessTools.Method(typeof(LoadGameMenu), "UpdateButtons");
+        private static readonly System.Reflection.MethodInfo? _populateMethod = AccessTools.Method(typeof(LoadGameMenu), "populateClickableComponentList");
 
         #endregion
 
@@ -61,34 +64,30 @@ namespace LANScanner.Patches
         /// Postfix for CoopMenu.saveFileScanComplete()
         /// This is called after save files are scanned and friend lobbies are set up.
         /// </summary>
+        /// <summary>
+        /// Postfix for CoopMenu.saveFileScanComplete()
+        /// This is called after save files are scanned and friend lobbies are set up.
+        /// </summary>
         private static void Postfix_SaveFileScanComplete(CoopMenu __instance)
         {
             try
             {
                 // Guard clauses
-                if (!ShouldEnableLanScanning(__instance))
+                if (!ShouldEnableLanScanning(__instance) || !PatchedMenus.TryAdd(__instance, true)) return;
+                
+                var scanner = ModEntry.Instance?.FarmLink;
+                var config = ModEntry.Instance?.Config;
+
+                if (scanner == null || config == null)
                 {
+                    _monitor?.Log("LAN Scanner or Config not initialized.", LogLevel.Warn);
                     return;
                 }
 
-                // Prevent double-patching the same menu instance
-                if (PatchedMenus.ContainsKey(__instance))
-                {
-                    return;
-                }
-
-                PatchedMenus[__instance] = true;
                 MenuSlots[__instance] = new List<LanServerSlot>();
 
                 // Start LAN scanner
-                var scanner = ModEntry.Instance?.LanScanner;
-                if (scanner == null)
-                {
-                    _monitor?.Log("LAN Scanner not initialized.", LogLevel.Warn);
-                    return;
-                }
-
-                scanner.Start(ModEntry.Instance.Config.BroadcastPort);
+                scanner.Start(config.BroadcastPort);
 
                 // Subscribe to scanner events
                 scanner.OnServerDiscovered += (server) => OnServerDiscovered(__instance, server);
@@ -125,7 +124,7 @@ namespace LANScanner.Patches
                 // Stop scanner if no other menus are using it
                 if (PatchedMenus.Count == 0)
                 {
-                    ModEntry.Instance?.LanScanner?.Stop();
+                    ModEntry.Instance?.FarmLink?.Stop();
                     _monitor?.Log("LAN scanner stopped (no active menus).", LogLevel.Debug);
                 }
             }
@@ -143,15 +142,13 @@ namespace LANScanner.Patches
         {
             try
             {
-                // Get the menuSlots field via reflection
-                var menuSlotsField = AccessTools.Field(typeof(LoadGameMenu), "menuSlots");
-                if (menuSlotsField == null)
+                if (_menuSlotsField == null)
                 {
                     _monitor?.Log("Could not find menuSlots field.", LogLevel.Error);
                     return;
                 }
 
-                var menuSlotsList = menuSlotsField.GetValue(menu) as System.Collections.IList;
+                var menuSlotsList = _menuSlotsField.GetValue(menu) as System.Collections.IList;
                 if (menuSlotsList == null)
                 {
                     _monitor?.Log("menuSlots is null or not a list.", LogLevel.Error);
@@ -174,7 +171,7 @@ namespace LANScanner.Patches
                 // Update UI
                 UpdateMenuUI(menu);
 
-                _monitor?.Log($"Added LAN server to menu: {server.FarmName}", LogLevel.Trace);
+                _monitor?.Log($"Added LAN server to menu: {server.FarmName}");
             }
             catch (Exception ex)
             {
@@ -195,7 +192,7 @@ namespace LANScanner.Patches
                 var existingSlot = slots.Find(s => s.MatchesServer(server));
                 existingSlot?.Update(server);
 
-                _monitor?.Log($"Updated LAN server in menu: {server.FarmName}", LogLevel.Trace);
+                _monitor?.Log($"Updated LAN server in menu: {server.FarmName}");
             }
             catch (Exception ex)
             {
@@ -207,11 +204,9 @@ namespace LANScanner.Patches
         {
             try
             {
-                // Get the menuSlots field
-                var menuSlotsField = AccessTools.Field(typeof(LoadGameMenu), "menuSlots");
-                if (menuSlotsField == null) return;
+                if (_menuSlotsField == null) return;
 
-                var menuSlotsList = menuSlotsField.GetValue(menu) as System.Collections.IList;
+                var menuSlotsList = _menuSlotsField.GetValue(menu) as System.Collections.IList;
                 if (menuSlotsList == null) return;
 
                 // Find and remove slot
@@ -229,7 +224,7 @@ namespace LANScanner.Patches
                     // Update UI
                     UpdateMenuUI(menu);
 
-                    _monitor?.Log($"Removed stale LAN server from menu: {server.FarmName}", LogLevel.Trace);
+                    _monitor?.Log($"Removed stale LAN server from menu: {server.FarmName}");
                 }
             }
             catch (Exception ex)
@@ -253,11 +248,10 @@ namespace LANScanner.Patches
                 return false;
             }
 
-            // Split-screen check (using reflection)
-            var splitScreenField = AccessTools.Field(typeof(CoopMenu), "_splitScreen");
-            if (splitScreenField != null)
+            // Split-screen check (using cached reflection)
+            if (_splitScreenField != null)
             {
-                var isSplitScreen = (bool)splitScreenField.GetValue(menu);
+                var isSplitScreen = _splitScreenField.GetValue(menu) as bool? ?? false;
                 if (isSplitScreen)
                 {
                     return false;
@@ -275,12 +269,10 @@ namespace LANScanner.Patches
             try
             {
                 // Call UpdateButtons() to refresh slot positions
-                var updateButtonsMethod = AccessTools.Method(typeof(LoadGameMenu), "UpdateButtons");
-                updateButtonsMethod?.Invoke(menu, null);
+                _updateButtonsMethod?.Invoke(menu, null);
 
                 // Call populateClickableComponentList() to refresh navigation
-                var populateMethod = AccessTools.Method(typeof(LoadGameMenu), "populateClickableComponentList");
-                populateMethod?.Invoke(menu, null);
+                _populateMethod?.Invoke(menu, null);
             }
             catch (Exception ex)
             {

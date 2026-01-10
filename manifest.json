@@ -1,10 +1,10 @@
 {
-    "Name": "LAN Scanner",
+    "Name": "FarmLink",
     "Author": "Sean Johnson",
     "Version": "1.0.0",
-    "Description": "Scans the local network for other Stardew Valley servers.",
-    "UniqueID": "sjohnson1021.LANScanner",
-    "EntryDll": "LANScanner.dll",
+    "Description": "Broadcasts your co-op farm to the local network when hosting, and discovers co-op farms on the local network.",
+    "UniqueID": "sjohnson1021.FarmLink",
+    "EntryDll": "FarmLink.dll",
     "MinimumApiVersion": "4.0.0",
     "UpdateKeys": [],
     "Dependencies": [

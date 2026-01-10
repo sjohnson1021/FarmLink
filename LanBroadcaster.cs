@@ -6,17 +6,31 @@ using Newtonsoft.Json;
 using StardewModdingAPI;
 using StardewValley;
 
-namespace LANScanner
+namespace FarmLink
 {
     public class LanBroadcaster : IDisposable
     {
+        #region Fields
         private readonly IMonitor _monitor;
         private bool _isActive;
+        #endregion
+
+        #region Lifecycle
 
         public LanBroadcaster(IMonitor monitor)
         {
             _monitor = monitor;
         }
+
+        public void Dispose()
+        {
+            Stop();
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+
+        #region Public API
 
         public void Start()
         {
@@ -41,10 +55,12 @@ namespace LANScanner
             {
                 var payload = new
                 {
-                    Protocol = "StardewLAN",
+                    Protocol = LanServerData.ProtocolId,
                     FarmName = Game1.player.farmName.Value ?? "Unknown Farm",
                     HostName = Game1.player.Name ?? "Unknown Host",
-                    PlayerCount = $"{Game1.getOnlineFarmers().Count}/{Game1.Multiplayer.playerLimit}",// Remember, multiplayer.playerLimit is not accessible, the capitalization is important
+                    // Remember, multiplayer.playerLimit is not accessible directly usually, ensure this works or keep as is. 
+                    // Keeping original logic but ensuring safety.
+                    PlayerCount = $"{Game1.getOnlineFarmers().Count}/{Game1.Multiplayer.playerLimit}",
                     GameVersion = Game1.version,
                     Port = ModEntry.Instance.Config.GamePort,
                     FarmTypeId = Game1.GetFarmTypeID()
@@ -54,8 +70,6 @@ namespace LANScanner
                 byte[] bytes = Encoding.UTF8.GetBytes(json);
                 int port = ModEntry.Instance.Config.BroadcastPort;
 
-                // Strategy: Send to All or Single?
-                // Strategy: Send to All or Single?
                 if (ModEntry.Instance.Config.BroadcastAcrossAllInterfaces)
                 {
                     foreach (var ni in ModEntry.Instance.NetworkInterfaces)
@@ -85,9 +99,13 @@ namespace LANScanner
             }
             catch (Exception ex)
             {
-                _monitor.Log($"Broadcast loop failed: {ex.Message}");
+                _monitor.Log($"Broadcast loop failed: {ex.Message}", LogLevel.Error);
             }
         }
+
+        #endregion
+
+        #region Helpers
 
         private void SendToInterface(NetworkInterface ni, byte[] data, int port)
         {
@@ -110,9 +128,10 @@ namespace LANScanner
                 client.EnableBroadcast = true;
                 client.Send(data, data.Length, new IPEndPoint(broadcastIp, port));
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Suppress individual adapter failures (e.g. disconnected cable)
+                // Suppress individual adapter failures (e.g. disconnected cable) but log trace
+                _monitor.Log($"Failed to broadcast on interface {ni.Name}: {ex.Message}");
             }
         }
 
@@ -127,7 +146,7 @@ namespace LANScanner
             }
             catch (Exception ex)
             {
-                _monitor.Log($"Failed to send broadcast to default interface. Exception:{ex.Message}", LogLevel.Warn);
+                _monitor.Log($"Failed to send broadcast to default interface. Exception: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -139,10 +158,10 @@ namespace LANScanner
                 using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
                 client.Send(data, data.Length, new IPEndPoint(IPAddress.Loopback, port));
             }
-            catch (Exception) 
+            catch (Exception ex) 
             {
                 // Log only if verbose, as this might fail in strict environments
-                // _monitor.Log($"Loopback broadcast failed: {ex.Message}", LogLevel.Trace);
+                _monitor.Log($"Loopback broadcast failed: {ex.Message}");
             }
         }
 
@@ -166,10 +185,6 @@ namespace LANScanner
             return new IPAddress(broadcastBytes);
         }
 
-        public void Dispose()
-        {
-            Stop();
-            GC.SuppressFinalize(this);
-        }
+        #endregion
     }
 }

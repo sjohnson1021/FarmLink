@@ -1,17 +1,21 @@
-using System;
-using System.Linq;
 using System.Net.NetworkInformation;
 using GenericModConfigMenu;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
-using StardewValley;
 using HarmonyLib;
-using LANScanner.Patches;
+using FarmLink.Patches;
 
-namespace LANScanner
+namespace FarmLink
 {
     public sealed class ModEntry : Mod
     {
+        #region Constants
+        private const int MinBroadcastInterval = 1;
+        private const int MaxBroadcastInterval = 30;
+        private const int MinPort = 1;
+        private const int MaxPort = 65535;
+        #endregion
+
         #region Properties
 
         public static ModEntry? Instance { get; private set; }
@@ -21,51 +25,18 @@ namespace LANScanner
         /// Cached list of interfaces to avoid polling the OS every frame.
         /// </summary>
         public NetworkInterface[] NetworkInterfaces { get; private set; } = Array.Empty<NetworkInterface>();
-        public LanScanner? LanScanner { get; private set; }
+        public FarmLink? FarmLink { get; private set; }
         #endregion
 
         #region Fields
 
         private ITranslationHelper? _t;
         private LanBroadcaster? _broadcaster;
-        private int _ticksSinceLastBroadcast = 0;
+        private int _ticksSinceLastBroadcast;
         private Harmony? _harmony;
         #endregion
 
         #region Lifecycle
-
-        // public override void Entry(IModHelper helper)
-        // {
-        //     Instance = this;
-        //     _t = helper.Translation;
-        //     Config = helper.ReadConfig<ModConfig>();
-
-        //     // 1. Cache Interfaces immediately
-        //     RefreshNetworkInterfaces();
-
-        //     // 2. Validate Config: If no adapter is selected (first run), pick the first valid one
-        //     if (string.IsNullOrEmpty(Config.NetworkAdapterName) && NetworkInterfaces.Length > 0)
-        //     {
-        //         Config.NetworkAdapterName = NetworkInterfaces[0].Id;
-        //         Helper.WriteConfig(Config);
-        //     }
-
-        //     // 3. Initialize Broadcaster
-        //     _broadcaster = new LanBroadcaster(Monitor);
-
-        //     // 4. Initialize LanScanner
-        //     LanScanner = new LanScanner(Monitor);
-
-        //     // 5. Initialize Harmony
-        //     _harmony = new Harmony(ModManifest.UniqueID);
-        //     _harmony.PatchAll();
-
-        //     // 6. Hook Events
-        //     helper.Events.GameLoop.GameLaunched += OnGameLaunched;
-        //     helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdateTicked;
-        //     helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
-        //     helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
-        // }
 
         public override void Entry(IModHelper helper)
         {
@@ -86,8 +57,8 @@ namespace LANScanner
             // 3. Initialize Broadcaster
             _broadcaster = new LanBroadcaster(Monitor);
 
-            // 4. Initialize LanScanner
-            LanScanner = new LanScanner(Monitor);
+            // 4. Initialize FarmLink
+            FarmLink = new FarmLink(Monitor);
 
             // 5. Initialize Harmony
             _harmony = new Harmony(ModManifest.UniqueID);
@@ -100,13 +71,6 @@ namespace LANScanner
             helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdateTicked;
             helper.Events.GameLoop.ReturnedToTitle += OnReturnedToTitle;
             helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
-        }
-        private void RefreshNetworkInterfaces()
-        {
-            // Filter out disabled or loopback adapters immediately to keep the list clean
-            NetworkInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(ni => ni.OperationalStatus == OperationalStatus.Up && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-                .ToArray();
         }
 
         #endregion
@@ -173,7 +137,7 @@ namespace LANScanner
                 tooltip: () => _t.Get("config.broadcastIntervalSeconds.tooltip"),
                 getValue: () => Config.BroadcastIntervalSeconds,
                 setValue: value => Config.BroadcastIntervalSeconds = value,
-                min: 1, max: 30
+                min: MinBroadcastInterval, max: MaxBroadcastInterval
             );
 
             api.AddBoolOption(
@@ -197,7 +161,7 @@ namespace LANScanner
                 name: () => _t.Get("config.gamePort.name"),
                 tooltip: () => _t.Get("config.gamePort.tooltip"),
                 getValue: () => Config.GamePort,
-                setValue: value => Config.GamePort = Math.Clamp(value, 1, 65535)
+                setValue: value => Config.GamePort = Math.Clamp(value, MinPort, MaxPort)
             );
 
             api.AddNumberOption(
@@ -205,7 +169,7 @@ namespace LANScanner
                 name: () => _t.Get("config.broadcastPort.name"),
                 tooltip: () => _t.Get("config.broadcastPort.tooltip"),
                 getValue: () => Config.BroadcastPort,
-                setValue: value => Config.BroadcastPort = Math.Clamp(value, 1, 65535)
+                setValue: value => Config.BroadcastPort = Math.Clamp(value, MinPort, MaxPort)
             );
 
             // Dynamic Dropdown for Network Adapters
@@ -227,12 +191,24 @@ namespace LANScanner
 
         #endregion
 
+        #region Helpers
+
+        private void RefreshNetworkInterfaces()
+        {
+            // Filter out disabled or loopback adapters immediately to keep the list clean
+            NetworkInterfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(ni => ni.OperationalStatus == OperationalStatus.Up && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .ToArray();
+        }
+
+        #endregion
+
         #region Cleanup
 
         protected override void Dispose(bool disposing)
         {
             _broadcaster?.Dispose();
-            LanScanner?.Dispose();
+            FarmLink?.Dispose();
             _harmony?.UnpatchAll();
             base.Dispose(disposing);
         }

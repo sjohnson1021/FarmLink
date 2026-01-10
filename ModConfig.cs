@@ -1,4 +1,4 @@
-namespace LANScanner
+namespace FarmLink
 {
     public sealed class ModConfig
     {
