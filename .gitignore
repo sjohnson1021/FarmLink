@@ -1,0 +1,13 @@
+# Filetypes
+*.txt
+*.bak
+*.code-workspace
+
+# Directories
+obj/
+bin/
+bak/
+.qodo/
+.idea/
+.agent/
+DevDocs/
