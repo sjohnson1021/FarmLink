@@ -47,7 +47,7 @@ namespace FarmLink.UI
         private void RefreshCache()
         {
             // Cache Strings
-            _formattedFarmName = $"{Server.FarmName} (LAN)";
+            _formattedFarmName = $"{Server.FarmName} Farm (LAN)";
             _formattedPlayerCount = Server.PlayerCount; // Already a string "1/4"
             _formattedIpAddress = Server.Address;
 
