@@ -2,12 +2,12 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "build LANScanner",
+			"label": "build FarmLink",
 			"type": "process",
 			"command": "dotnet",
 			"args": [
 				"build",
-				"/home/seanj/GOG Games/Stardew Valley/LANScanner/LANScanner.csproj",
+				"/home/seanj/GOG Games/Stardew Valley/FarmLink/FarmLink.csproj",
 				"-c",
 				"Debug", // Explicitly set to Debug
 				"/property:GenerateFullPaths=true",

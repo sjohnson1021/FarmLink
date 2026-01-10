@@ -23,6 +23,8 @@ namespace FarmLink.UI
         private string _formattedFarmName = null!;
         private Vector2 _hostNameSize;
         private string _formattedPlayerCount = null!;
+        private string _formattedIpAddress = null!;
+        private Vector2 _ipAddressSize;
 
 
         #endregion
@@ -47,9 +49,11 @@ namespace FarmLink.UI
             // Cache Strings
             _formattedFarmName = $"{Server.FarmName} (LAN)";
             _formattedPlayerCount = Server.PlayerCount; // Already a string "1/4"
+            _formattedIpAddress = Server.Address;
 
             // Measure Text
             _hostNameSize = Game1.dialogueFont.MeasureString(Server.HostName);
+            _ipAddressSize = Game1.dialogueFont.MeasureString(_formattedIpAddress);
 
             // Resolve Icon
             ResolveIcon();
@@ -162,6 +166,13 @@ namespace FarmLink.UI
             // Player Count
             Vector2 countPos = new(bounds.X + 160, bounds.Y + 104);
             Utility.drawTextWithShadow(b, _formattedPlayerCount, Game1.dialogueFont, countPos, Game1.textColor);
+
+            // IP Address (Right-aligned, underneath Host Name)
+            Vector2 ipPos = new(
+                bounds.X + bounds.Width - 160 - _ipAddressSize.X,
+                bounds.Y + 104
+            );
+            Utility.drawTextWithShadow(b, _formattedIpAddress, Game1.dialogueFont, ipPos, Game1.textColor);
         }
 
         #endregion

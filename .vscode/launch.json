@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": ".NET Core Launch (SDV - LANScanner)",
+            "name": ".NET Core Launch (SDV - FarmLink)",
             "type": "coreclr",
             "request": "launch",
-            "preLaunchTask": "build LANScanner", // Or your custom build task
+            "preLaunchTask": "build FarmLink", // Or your custom build task
             "program": "/home/seanj/GOG Games/Stardew Valley/game/StardewModdingAPI.dll", // Adjust path to your game's SMAPI
             "args": [],
             "cwd": "/home/seanj/GOG Games/Stardew Valley/game", // Adjust path to game directory
