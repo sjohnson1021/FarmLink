@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET Core Launch (SDV - LANScanner)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build LANScanner", // Or your custom build task
+            "program": "/home/seanj/GOG Games/Stardew Valley/game/StardewModdingAPI.dll", // Adjust path to your game's SMAPI
+            "args": [],
+            "cwd": "/home/seanj/GOG Games/Stardew Valley/game", // Adjust path to game directory
+            "stopAtEntry": false,
+            "console": "internalConsole", // Or "integratedTerminal"
+            "justMyCode": false,
+            "suppressJITOptimizations": true,
+            "env": {
+                "SMAPI_FORCE_DEBUG_MODE": "true" // Optional: Forces SMAPI console to stay open
+            }
+        }
+    ]
+}

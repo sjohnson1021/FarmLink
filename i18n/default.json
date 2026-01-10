@@ -1,0 +1,14 @@
+{
+    "config.broadcastIntervalSeconds.name": "Broadcast Interval",
+    "config.broadcastIntervalSeconds.tooltip": "How often to broadcast server presence (in seconds). Lower values = faster discovery, higher network traffic.",
+    "config.gamePort.name": "Game Port",
+    "config.gamePort.tooltip": "The port your game server listens on. Default: 24642. Change this if you've customized your game's port.",
+    "config.broadcastPort.name": "Broadcast Port",
+    "config.broadcastPort.tooltip": "The UDP port to broadcast/listen on for LAN discovery. Default: 24644. Must match on all clients.",
+    "config.broadcastAcrossAllInterfaces.name": "Broadcast Across All Adapters",
+    "config.broadcastAcrossAllInterfaces.tooltip": "Enable to broadcast on all adapters. Disable to choose a specific adapter below.",
+    "config.networkAdapterName.name": "Network Adapter",
+    "config.networkAdapterName.tooltip": "Select which adapter to use for broadcasting (only used when 'Broadcast Across All' is disabled).",
+    "config.enableLanScanning.name": "Enable LAN Server Discovery",
+    "config.enableLanScanning.tooltip": "When enabled, automatically discover and display LAN servers in the Co-op menu. Disable if you only want to manually enter IP addresses."
+}

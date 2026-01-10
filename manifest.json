@@ -1,0 +1,16 @@
+{
+    "Name": "LAN Scanner",
+    "Author": "Sean Johnson",
+    "Version": "1.0.0",
+    "Description": "Scans the local network for other Stardew Valley servers.",
+    "UniqueID": "sjohnson1021.LANScanner",
+    "EntryDll": "LANScanner.dll",
+    "MinimumApiVersion": "4.0.0",
+    "UpdateKeys": [],
+    "Dependencies": [
+        {
+            "UniqueID": "spacechase0.GenericModConfigMenu",
+            "IsRequired": false
+        }
+    ]
+}
